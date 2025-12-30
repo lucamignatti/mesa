@@ -120,6 +120,7 @@ zink_debug_options[] = {
    { "rploads", ZINK_DEBUG_RPLOADS, "Zap renderpass loads for DONT_CARE" },
    { "nogeneral", ZINK_DEBUG_NOGENERAL, "Disable GENERAL layout usage for supported hardware" },
    { "rpstores", ZINK_DEBUG_RPSTORES, "Zap renderpass stores for DONT_CARE" },
+   { "dummydes", ZINK_DEBUG_DUMMYDES, "Use dummy descriptors even if nullDescriptor is available" },
    DEBUG_NAMED_VALUE_END
 };
 
@@ -317,9 +318,17 @@ disk_cache_init(struct zink_screen *screen)
    /* Hash in the zink driver build. */
    const struct build_id_note *note =
        build_id_find_nhdr_for_addr(disk_cache_init);
-   unsigned build_id_len = build_id_length(note);
+   unsigned build_id_len = note ? build_id_length(note) : 0;
+#ifdef __APPLE__
+   /* macOS doesn't have ELF build IDs, so we can't rely on them.
+    * Just proceed without the build ID in the hash.
+    */
+   if (note && build_id_len > 0)
+      _mesa_blake3_update(&ctx, build_id_data(note), build_id_len);
+#else
    assert(note && build_id_len == BUILD_ID_EXPECTED_HASH_LENGTH);
    _mesa_blake3_update(&ctx, build_id_data(note), build_id_len);
+#endif
 #endif
 
    /* Hash in the Vulkan pipeline cache UUID to identify the combination of
@@ -3490,11 +3499,6 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       goto fail;
    }
 
-   if (!screen->info.rb2_feats.nullDescriptor) {
-      mesa_loge("Zink requires the nullDescriptor feature of KHR/EXT robustness2.");
-      goto fail;
-   }
-
    if (zink_set_driver_strings(screen)) {
       mesa_loge("ZINK: failed to set driver strings\n");
       goto fail;
@@ -3730,6 +3734,14 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
          if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
             if (!screen->driver_name_is_inferred)
                mesa_loge("Cannot use db descriptor mode without EXT_non_seamless_cube_map");
+            goto fail;
+         }
+         can_db = false;
+      }
+      if (!screen->info.rb2_feats.nullDescriptor || (zink_debug & ZINK_DEBUG_DUMMYDES)) {
+         if (zink_descriptor_mode == ZINK_DESCRIPTOR_MODE_DB) {
+            if (!screen->driver_name_is_inferred)
+               mesa_loge("Cannot use db descriptor mode without robustness2.nullDescriptor");
             goto fail;
          }
          can_db = false;
