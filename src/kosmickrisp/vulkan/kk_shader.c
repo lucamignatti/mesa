@@ -1160,24 +1160,21 @@ kk_deserialize_shader(struct vk_device *vk_dev, struct blob_reader *blob,
 
    blob_copy_bytes(blob, (void *)shader->entrypoint_name, entrypoint_length);
    blob_copy_bytes(blob, (void *)shader->msl_code, code_length);
-   blob_copy_bytes(blob, &shader->pipeline, sizeof(shader->pipeline));
-   if (blob->overrun) {
-      kk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
-      return vk_error(dev, VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT);
-   }
 
-   /* We are building a new shader so we need to retain resources */
-   if (info.stage == MESA_SHADER_COMPUTE)
-      mtl_retain(shader->pipeline.cs);
-   else if (info.stage == MESA_SHADER_VERTEX) {
-      mtl_retain(shader->pipeline.gfx.handle);
-      if (shader->pipeline.gfx.mtl_depth_stencil_state_handle)
-         mtl_retain(shader->pipeline.gfx.mtl_depth_stencil_state_handle);
-   }
-
-   *shader_out = &shader->vk;
-
-   return VK_SUCCESS;
+   /* NOTE: The blob contains a serialized pipeline struct with stale pointer
+    * values from whatever process originally compiled the shader. These
+    * pointers are INVALID in the current process and MUST NOT be used.
+    *
+    * Additionally, to properly recompile the Metal pipeline, we would need
+    * the full vk_graphics_pipeline_state (render pass formats, color
+    * attachments, depth/stencil state, etc.) which is NOT serialized.
+    *
+    * Therefore, we MUST return an error to force fresh recompilation.
+    * This effectively disables shader caching for kosmickrisp, but ensures
+    * correctness.
+    */
+   kk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+   return vk_error(dev, VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT);
 }
 
 static void
