@@ -826,9 +826,6 @@ kk_flush_draw_state(struct kk_cmd_buffer *cmd)
          mtl_set_depth_stencil_state(enc, gfx->depth_stencil_state);
    }
 
-   fprintf(stderr, "DEBUG: kk_flush_draw_state push_dirty=0x%x root_dirty=%d\n",
-           desc->push_dirty, desc->root_dirty);
-
    if (desc->push_dirty)
       kk_cmd_buffer_flush_push_descriptors(cmd, desc);
    if (desc->root_dirty)
