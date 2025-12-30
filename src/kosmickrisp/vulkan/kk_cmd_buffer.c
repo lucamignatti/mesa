@@ -413,6 +413,12 @@ kk_cmd_buffer_flush_push_descriptors(struct kk_cmd_buffer *cmd,
 {
    u_foreach_bit(set_idx, desc->push_dirty) {
       struct kk_push_descriptor_set *push_set = desc->push[set_idx];
+      /* If push_set is NULL, the push_dirty bit shouldn't have been set, but
+       * handle it gracefully to avoid crashes. */
+      if (unlikely(push_set == NULL)) {
+         desc->push_dirty &= ~BITFIELD_BIT(set_idx);
+         continue;
+      }
       struct kk_bo *bo = kk_cmd_allocate_buffer(cmd, sizeof(push_set->data),
                                                 KK_MIN_UBO_ALIGNMENT);
       if (bo == NULL)
